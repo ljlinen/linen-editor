@@ -1,11 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#060b16">
 <title>Linen Editor</title></head>
 <body>
-<header><button id="menu" aria-label="Files">☰</button><span id="fname">No folder</span><button id="save">Save</button></header>
+<header><button id="menu" aria-label="Files"></button><div id="crumb"><span id="fname">Open a folder</span><span id="sep" hidden></span><span id="cfile"></span></div><button id="save" aria-label="Save file"></button></header>
 <div id="tabs"></div>
-<main><aside id="side"><button id="open">Open folder</button><div id="tree"></div></aside><div id="scrim"></div><div id="editor"></div></main>
-<div id="keys"></div><footer id="status">Open a folder to start</footer>
+<div id="editor"></div>
+<div id="keys1" class="keys"></div><div id="keys2" class="keys"></div>
+<div id="scrim"></div>
+<aside id="side"><div id="shead"><span>FILES</span><button id="refresh" aria-label="Refresh"></button><button id="open" aria-label="Open folder"></button></div><div id="tree"></div></aside>
+<div id="toast"></div>
 <script type="module" src="/src/main.ts"></script>
 </body></html>
