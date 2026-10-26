@@ -54,6 +54,14 @@ public class SafPlugin extends Plugin {
     } catch (Exception e) { c.reject(String.valueOf(e.getMessage())); }
   }
 
+  @PluginMethod public void readBase64(PluginCall c) {
+    try (InputStream in = getContext().getContentResolver().openInputStream(Uri.parse(c.getString("uri")))) {
+      ByteArrayOutputStream b = new ByteArrayOutputStream(); byte[] buf = new byte[8192]; int n;
+      while ((n = in.read(buf)) != -1) b.write(buf, 0, n);
+      JSObject o = new JSObject(); o.put("data", android.util.Base64.encodeToString(b.toByteArray(), android.util.Base64.NO_WRAP)); c.resolve(o);
+    } catch (Exception e) { c.reject(String.valueOf(e.getMessage())); }
+  }
+
   @PluginMethod public void write(PluginCall c) {
     try (OutputStream out = getContext().getContentResolver().openOutputStream(Uri.parse(c.getString("uri")), "wt")) {
       out.write(c.getString("text").getBytes(StandardCharsets.UTF_8)); c.resolve();
