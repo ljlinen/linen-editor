@@ -15,13 +15,15 @@ import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { abbreviationTracker, expandAbbreviation } from '@emmetio/codemirror6-plugin'
 
-type Entry = { name: string; uri: string; isDir: boolean }
+type Entry = { name: string; uri: string; isDir: boolean; size?: number }
 type F = Entry & { path: string }
 const Saf = registerPlugin<{
   pickFolder(): Promise<{ uri: string }>
   list(o: { uri: string }): Promise<{ entries: Entry[] }>
   read(o: { uri: string }): Promise<{ text: string }>
   readBase64(o: { uri: string }): Promise<{ data: string }>
+  writeBase64(o: { uri: string; data: string }): Promise<void>
+  pickFile(): Promise<{ uri: string; name: string; size: number }>
   write(o: { uri: string; text: string }): Promise<void>
 }>('Saf')
 type Tab = { uri: string; name: string; state: EditorState; dirty: boolean }
@@ -33,10 +35,10 @@ const IC = {
   cmd: 'M9 9V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z', folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6', chev: 'M9 6l6 6-6 6', x: 'M6 6l12 12M18 6L6 18', tab: 'M3 12h13M12 7l5 5-5 5M21 5v14',
   up: 'M6 15l6-6 6 6', down: 'M6 9l6 6 6-6', left: 'M15 6l-6 6 6 6', right: 'M9 6l6 6-6 6', more: 'M5 12h.01M12 12h.01M19 12h.01', fwd: 'M6 6l6 6-6 6M12 6l6 6-6 6',
-  undo: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
+  undo: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01',
 }
 $('#menu').innerHTML = svg(IC.menu); $('#search').innerHTML = svg(IC.search); $('#run').innerHTML = svg(IC.run)
-$('#more').innerHTML = svg(IC.more); $('#psearch').innerHTML = svg(IC.search); $('#refresh').innerHTML = svg(IC.refresh); $('#open').innerHTML = svg(IC.folder)
+$('#more').innerHTML = svg(IC.more); $('#psearch').innerHTML = svg(IC.search); $('#refresh').innerHTML = svg(IC.refresh); $('#open').innerHTML = svg(IC.folder); $('#assets').innerHTML = svg(IC.image)
 
 // ---------- settings ----------
 const S = { efs: Math.round(Math.min(innerWidth, 480) / 1080 * 38 * 10) / 10, ui: 1, wrap: true, tab: 2, auto: true, ...JSON.parse(localStorage.getItem('set') || '{}') }
@@ -230,7 +232,7 @@ async function renderDir(uri: string, box: HTMLElement, d: number) {
         pl.onclick = async ev => { ev.stopPropagation(); await openFile(e); preview() }
         row.append(pl)
       }
-      row.onclick = () => { selRow?.classList.remove('sel'); (selRow = row).classList.add('sel'); openFile(e) }
+      row.onclick = () => { if (IMG.test(e.name)) { drawer(false); compare(e); return } selRow?.classList.remove('sel'); (selRow = row).classList.add('sel'); openFile(e) }
       continue
     }
     const kids = document.createElement('div'); kids.className = 'kids'; kids.hidden = true
@@ -398,7 +400,7 @@ function palette() {
   const s = sheet('Type a command or file name')
   const cmds: [string, () => void][] = [
     ['Find in file', () => cur && openSearchPanel(view)], ['Search in all files', searchUI], ['Live preview', preview], ['Save file', () => save(false)],
-    ['Settings', settings], ['Open folder', pick], ['Go to line…', () => { const n = parseInt(prompt('Line number') || ''); if (n) goLine(n) }],
+    ['Assets', assets], ['Settings', settings], ['Open folder', pick], ['Go to line…', () => { const n = parseInt(prompt('Line number') || ''); if (n) goLine(n) }],
     ['Close tab', () => cur && closeTab(cur)], ['Next tab', () => step(1)], ['Previous tab', () => step(-1)], ['Refresh files', () => root && loadFolder(root)],
   ]
   let id = 0
@@ -485,6 +487,148 @@ async function preview() {
   frame.srcdoc = '<!doctype html>' + doc.documentElement.outerHTML
 }
 
+// ---------- assets browser + compare/replace ----------
+const IMG = /\.(png|jpe?g|gif|webp|svg|ico|avif|bmp)$/i
+const RES = /\.(woff2?|ttf|otf|eot|mp[34]|wav|ogg|m4a|webm|mov|pdf)$/i
+const MIME2: Record<string, string> = { ...MIME, avif: 'image/avif', bmp: 'image/bmp' }
+const cache = new Map<string, string>()
+const ext = (n: string) => n.split('.').pop()!.toLowerCase().replace('jpeg', 'jpg')
+const fmt = (n?: number) => (n == null ? '' : n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB')
+async function dataUri(e: Entry) {
+  const hit = cache.get(e.uri); if (hit) return hit
+  const { data } = await Saf.readBase64({ uri: e.uri })
+  const u = `data:${MIME2[ext(e.name)] || 'application/octet-stream'};base64,${data}`
+  if (cache.size > 120) cache.delete(cache.keys().next().value!)
+  cache.set(e.uri, u); return u
+}
+let active = 0; const waiting: (() => void)[] = []
+const limit = <T,>(fn: () => Promise<T>) => new Promise<T>((res, rej) => {
+  const run = () => { active++; fn().then(res, rej).finally(() => { active--; waiting.shift()?.() }) }
+  active < 4 ? run() : waiting.push(run)
+})
+const lazy = (root2: HTMLElement) => new IntersectionObserver((es, ob) => es.forEach(en => {
+  if (!en.isIntersecting) return
+  const im = en.target as HTMLImageElement; ob.unobserve(im)
+  limit(() => dataUri((im as any)._e)).then(u => { im.src = u }).catch(() => { im.alt = '!' })
+}), { root: root2, rootMargin: '400px' })
+function thumb(e: Entry, obs: IntersectionObserver) {
+  const d = document.createElement('div'); d.className = 'im'
+  if (IMG.test(e.name) && (e.size ?? 0) < 4e6) { const im = document.createElement('img'); (im as any)._e = e; im.alt = ''; d.append(im); obs.observe(im) }
+  else d.append(badge(e.name))
+  return d
+}
+async function walkAny(uri: string): Promise<F[]> {
+  const out: F[] = []
+  const go = async (u: string, path: string): Promise<void> => {
+    const { entries } = await Saf.list({ uri: u })
+    await Promise.all(entries.map(async e => {
+      if (!e.isDir) out.push({ ...e, path: path + e.name })
+      else if (!SKIP.test(e.name)) await go(e.uri, path + e.name + '/')
+    }))
+  }
+  await go(uri, ''); return out
+}
+async function assets() {
+  if (!root) return toast('Open a folder first')
+  const s = sheet('Filter assets'); s.body.innerHTML = '<div class="msg">Scanning…</div>'
+  const all = (await files()).filter(f => IMG.test(f.name) || RES.test(f.name)), obs = lazy(s.body)
+  const draw = () => {
+    const q = s.input!.value.trim().toLowerCase(), list = all.filter(f => f.path.toLowerCase().includes(q)).slice(0, 400)
+    const tools = document.createElement('div'); tools.className = 'tools'
+    const info = document.createElement('span'); info.textContent = `${list.length} of ${all.length} assets`
+    const mb = document.createElement('button'); mb.textContent = 'Match from folder'; mb.onclick = () => matchFolder(all)
+    tools.append(info, mb)
+    const grid = document.createElement('div'); grid.className = 'grid'
+    for (const f of list) {
+      const t2 = document.createElement('div'); t2.className = 'tile'
+      const b = document.createElement('b'); b.textContent = f.name
+      const sm = document.createElement('small'); sm.textContent = f.path.slice(0, -f.name.length) || '/'
+      t2.append(thumb(f, obs), b, sm); t2.onclick = () => compare(f); grid.append(t2)
+    }
+    s.body.replaceChildren(tools, grid)
+  }
+  s.input!.oninput = draw; draw()
+}
+async function compare(f: Entry & { path?: string }) {
+  const s = sheet(undefined, f.name)
+  const pane = (label: string) => { const p = document.createElement('div'); p.className = 'pane'; p.innerHTML = `<b>${label}</b><div class="im"></div><small></small>`; return p }
+  const cmp = document.createElement('div'); cmp.className = 'cmp'
+  const a = pane('Current'), b = pane('New'); cmp.append(a, b)
+  const note = document.createElement('div'); note.className = 'note'
+  const show = async (p: HTMLElement, e: Entry) => {
+    const bx = p.children[1] as HTMLElement, inf = p.lastChild as HTMLElement; bx.replaceChildren()
+    if (IMG.test(e.name)) {
+      const im = document.createElement('img'); bx.append(im)
+      im.onload = () => { inf.textContent = `${im.naturalWidth}×${im.naturalHeight} · ${fmt(e.size)}` }
+      try { im.src = await dataUri(e) } catch { inf.textContent = 'Could not load' }
+    } else { bx.append(badge(e.name)); inf.textContent = fmt(e.size) }
+  }
+  let neu: { uri: string; name: string; size: number } | null = null, old: { data: string; size?: number } | null = null
+  const btn = (t2: string, alt = false) => { const x2 = document.createElement('button'); x2.textContent = t2; if (alt) x2.className = 'alt'; return x2 }
+  const choose = btn('Choose replacement'), rb = btn('Replace'), undoB = btn('Undo', true)
+  rb.disabled = true; undoB.hidden = true
+  const acts = document.createElement('div'); acts.className = 'acts'; acts.append(choose, rb, undoB)
+  choose.onclick = async () => {
+    try {
+      neu = await Saf.pickFile(); await show(b, neu); rb.disabled = false
+      note.classList.toggle('warn', ext(neu.name) !== ext(f.name))
+      note.textContent = ext(neu.name) !== ext(f.name) ? `Different format: new file is .${ext(neu.name)}, this one is .${ext(f.name)}. It will be saved under the existing name as-is.` : ''
+    } catch { /* cancelled */ }
+  }
+  rb.onclick = async () => {
+    if (!neu || !confirm(`Replace ${f.name} with the new file?`)) return
+    try {
+      old = { data: (await Saf.readBase64({ uri: f.uri })).data, size: f.size }
+      await Saf.writeBase64({ uri: f.uri, data: (await Saf.readBase64({ uri: neu.uri })).data })
+      cache.delete(f.uri); f.size = neu.size; await show(a, f); undoB.hidden = false; toast('Replaced')
+    } catch (e: any) { toast(`Could not replace: ${e?.message ?? e}`) }
+  }
+  undoB.onclick = async () => {
+    if (!old) return
+    try { await Saf.writeBase64({ uri: f.uri, data: old.data }); cache.delete(f.uri); f.size = old.size; old = null; undoB.hidden = true; await show(a, f); toast('Restored') }
+    catch (e: any) { toast(`Could not restore: ${e?.message ?? e}`) }
+  }
+  s.body.append(cmp, note, acts); show(a, f)
+}
+async function matchFolder(all: F[]) {
+  let uri: string
+  try { uri = (await Saf.pickFolder()).uri } catch { return }
+  const s = sheet(undefined, 'Match by filename'); s.body.innerHTML = '<div class="msg">Scanning…</div>'
+  const reps = (await walkAny(uri)).filter(r => IMG.test(r.name) || RES.test(r.name))
+  const byName = new Map<string, F>(); for (const r of reps) if (!byName.has(r.name.toLowerCase())) byName.set(r.name.toLowerCase(), r)
+  const pairs = all.map(x => ({ a: x, b: byName.get(x.name.toLowerCase()) })).filter(p => p.b) as { a: F; b: F }[]
+  const used = new Set(pairs.map(p => p.b.uri))
+  if (!pairs.length) { s.body.innerHTML = '<div class="msg">No files in that folder share a name with your project assets.</div>'; return }
+  const obs = lazy(s.body), checks: HTMLInputElement[] = []
+  const note = document.createElement('div'); note.className = 'note'
+  note.textContent = `${pairs.length} matched · ${all.length - pairs.length} project assets without a replacement · ${reps.filter(r => !used.has(r.uri)).length} new files without a match`
+  const rb = document.createElement('button'), acts = document.createElement('div'); acts.className = 'acts'; acts.append(rb)
+  const count = () => { const n = checks.filter(c => c.checked).length; rb.textContent = `Replace selected (${n})`; rb.disabled = !n }
+  const list = document.createElement('div'); list.className = 'pairs'
+  for (const p of pairs) {
+    const row = document.createElement('div'); row.className = 'pair'
+    const ck = document.createElement('input'); ck.type = 'checkbox'; ck.checked = true; ck.onchange = count; checks.push(ck)
+    const mid = document.createElement('div'); mid.className = 'mid'
+    const nm = document.createElement('b'); nm.textContent = p.a.name
+    const sm = document.createElement('small'); sm.textContent = `${p.a.path} · ${fmt(p.a.size)} → ${fmt(p.b.size)}`
+    mid.append(nm, sm); row.append(ck, thumb(p.a, obs), thumb(p.b, obs), mid)
+    row.onclick = ev => { if (ev.target !== ck) { ck.checked = !ck.checked; count() } }
+    list.append(row)
+  }
+  count()
+  rb.onclick = async () => {
+    const sel = pairs.filter((_, i) => checks[i].checked)
+    if (!confirm(`Replace ${sel.length} file(s) in your project with the new versions? Bulk replace cannot be undone.`)) return
+    let n = 0, fail = 0
+    for (const p of sel) {
+      try { await Saf.writeBase64({ uri: p.a.uri, data: (await Saf.readBase64({ uri: p.b.uri })).data }); cache.delete(p.a.uri); n++ } catch { fail++ }
+      rb.textContent = `Replacing… ${n + fail}/${sel.length}`
+    }
+    s.body.innerHTML = `<div class="msg">Replaced ${n} file(s)${fail ? `, ${fail} failed` : ''}.</div>`
+  }
+  s.body.replaceChildren(acts, note, list)
+}
+
 // ---------- wiring ----------
 $('#menu').onclick = () => drawer(true)
 scrim.onclick = () => drawer(false)
@@ -493,6 +637,7 @@ $('#run').onclick = preview
 $('#psearch').onclick = () => { drawer(false); setTimeout(searchUI, 120) }
 $('#refresh').onclick = () => root && loadFolder(root)
 $('#open').onclick = pick
+$('#assets').onclick = () => { drawer(false); setTimeout(assets, 120) }
 $('#more').onclick = () => { drawer(false); setTimeout(settings, 120) }
 const last = localStorage.getItem('folder')
 if (last) loadFolder(last)

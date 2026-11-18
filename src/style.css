@@ -44,7 +44,7 @@ body.typing #keys1,body.more #keys1{display:flex}
 .sheet{position:fixed;inset:0;z-index:8;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);transform:translateY(100%);transition:transform .24s var(--ease)}.sheet.on{transform:none}
 .sh{display:flex;align-items:center;gap:calc(var(--u)*10);height:calc(var(--u)*156);padding:0 calc(var(--u)*16);border-bottom:1px solid var(--line)}.sh button{width:calc(var(--u)*130);height:calc(var(--u)*130);flex:none}
 input{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:calc(var(--u)*28);height:calc(var(--u)*120);padding:0 calc(var(--u)*36);outline:0;min-width:0;user-select:text;-webkit-user-select:text}input:focus{border-color:var(--blue)}
-.sh input{flex:1}.sb{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column}.sb>div:not(.msg):not(.rp):not(.set){display:flex;flex-direction:column}
+.sh input{flex:1}.sb{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column}.sb>div:not(.msg):not(.rp):not(.set):not(.grid):not(.cmp):not(.acts):not(.tools){display:flex;flex-direction:column}
 .sb iframe{flex:1;border:0;background:#fff;width:100%}
 .sheet .row{margin:0;padding:0 calc(var(--u)*46)}.row.hit{flex-wrap:wrap;gap:calc(var(--u)*4) calc(var(--u)*20);padding:calc(var(--u)*24) calc(var(--u)*46)}.row.hit small{flex-basis:100%;color:var(--dim);padding-left:calc(var(--u)*58);overflow:hidden;text-overflow:ellipsis}
 .rp{display:flex;gap:calc(var(--u)*16);padding:calc(var(--u)*24) calc(var(--u)*30);border-bottom:1px solid var(--line)}.rp input{flex:1}
@@ -54,3 +54,16 @@ input{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(
 .fp{padding:calc(var(--u)*16) calc(var(--u)*24);display:flex;flex-direction:column;gap:calc(var(--u)*14)}.fr{display:flex;gap:calc(var(--u)*10);align-items:center}.fr input{flex:1;height:calc(var(--u)*110)}.fr button{height:calc(var(--u)*110);min-width:calc(var(--u)*110)}.fr button.on{background:var(--sel)}
 .fr .t{height:calc(var(--u)*110)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.tools{display:flex;align-items:center;justify-content:space-between;padding:calc(var(--u)*24) calc(var(--u)*30);color:var(--dim)}
+.tools button,.acts button{background:var(--blue);color:#fff;padding:0 calc(var(--u)*34);height:calc(var(--u)*110);border-radius:calc(var(--u)*28)}
+.acts{display:flex;gap:calc(var(--u)*16);padding:calc(var(--u)*24) calc(var(--u)*30);flex-wrap:wrap}.acts button:disabled{opacity:.4}.acts button.alt{background:var(--panel);color:var(--fg)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(var(--u)*24);padding:0 calc(var(--u)*30) calc(var(--u)*60)}
+.tile{display:flex;flex-direction:column;gap:calc(var(--u)*8);min-width:0}.tile:active{opacity:.7}
+.im{aspect-ratio:1;display:grid;place-items:center;overflow:hidden;border-radius:calc(var(--u)*20);background:repeating-conic-gradient(#1a1d26 0 25%,#232734 0 50%) 0 0/calc(var(--u)*40) calc(var(--u)*40)}
+.im img{max-width:100%;max-height:100%;object-fit:contain}.im .fi{width:calc(var(--u)*90);height:calc(var(--u)*90)}
+.tile b,.pair b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tile small,.pair small{color:var(--dim);font-size:calc(var(--u)*28);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmp{display:flex;gap:calc(var(--u)*24);padding:calc(var(--u)*30)}.pane{flex:1;min-width:0;display:flex;flex-direction:column;gap:calc(var(--u)*12)}.pane small{color:var(--dim);font-size:calc(var(--u)*30)}
+.note{padding:calc(var(--u)*10) calc(var(--u)*30);color:var(--dim)}.note.warn{color:#e2b34a}
+.pairs{display:flex;flex-direction:column}.pair{display:flex;align-items:center;gap:calc(var(--u)*20);padding:calc(var(--u)*20) calc(var(--u)*30);border-bottom:1px solid var(--line)}.pair .im{width:calc(var(--u)*170);flex:none}.pair .mid{flex:1;min-width:0;display:flex;flex-direction:column}
+input[type=checkbox]{width:calc(var(--u)*56);height:calc(var(--u)*56);flex:none;padding:0;accent-color:var(--blue)}
