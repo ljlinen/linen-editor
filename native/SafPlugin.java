@@ -78,6 +78,28 @@ public class SafPlugin extends Plugin {
     c.resolve(o);
   }
 
+  @PluginMethod public void pickFiles(PluginCall c) {
+    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+    i.addCategory(Intent.CATEGORY_OPENABLE); i.setType("*/*"); i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+    startActivityForResult(c, i, "pickedFiles");
+  }
+
+  @ActivityCallback private void pickedFiles(PluginCall c, ActivityResult r) {
+    if (c == null) return;
+    if (r.getResultCode() != Activity.RESULT_OK || r.getData() == null) { c.reject("cancelled"); return; }
+    Intent d = r.getData(); JSArray a = new JSArray();
+    android.content.ClipData cd = d.getClipData();
+    int n = cd != null ? cd.getItemCount() : 1;
+    for (int k = 0; k < n; k++) {
+      Uri u = cd != null ? cd.getItemAt(k).getUri() : d.getData();
+      DocumentFile f = DocumentFile.fromSingleUri(getContext(), u);
+      JSObject o = new JSObject();
+      o.put("uri", u.toString()); o.put("name", f != null ? f.getName() : "file"); o.put("size", f != null ? f.length() : 0);
+      a.put(o);
+    }
+    JSObject res = new JSObject(); res.put("files", a); c.resolve(res);
+  }
+
   @PluginMethod public void writeBase64(PluginCall c) {
     try (OutputStream out = getContext().getContentResolver().openOutputStream(Uri.parse(c.getString("uri")), "wt")) {
       out.write(android.util.Base64.decode(c.getString("data"), android.util.Base64.DEFAULT)); c.resolve();
